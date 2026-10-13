@@ -1,0 +1,1 @@
+# LifeLink Django Project Package

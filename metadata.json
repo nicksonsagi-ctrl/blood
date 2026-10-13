@@ -1,0 +1,6 @@
+{
+  "name": "LifeLink Sri Lanka - Blood Donor Management System",
+  "description": "A Drop of Hope, Give Blood, Give Life. Connecting blood donors across Sri Lanka, Jaffna District, and all 25 districts with emergency blood requests, real-time map searching, donor and hospital management, and localized English, Tamil, and Sinhala support.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
