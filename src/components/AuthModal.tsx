@@ -1,24 +1,52 @@
 import React, { useState } from 'react';
-import { X, Heart, ShieldCheck, UserCheck, AlertCircle } from 'lucide-react';
+import {
+  X,
+  Heart,
+  ShieldCheck,
+  UserCheck,
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Phone,
+  Mail,
+  Lock,
+  KeyRound,
+  CheckCircle2,
+  ShieldAlert,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SRI_LANKA_PROVINCES, SRI_LANKA_DISTRICTS, validateSriLankanPhone } from '../data/sriLankaData';
 import { BloodGroup } from '../types';
 
 interface AuthModalProps {
   initialMode: 'login' | 'register';
+  setCurrentTab?: (tab: string) => void;
   onClose: () => void;
 }
 
-export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) => {
-  const { login, register } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, setCurrentTab, onClose }) => {
+  const { login, register, sendOtp, verifyOtp } = useAuth();
+  const [mode, setMode] = useState<'login' | 'register' | 'otp'>(initialMode);
   const [role, setRole] = useState<'donor' | 'requester'>('donor');
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Show/Hide password states
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [showRegConfirm, setShowRegConfirm] = useState(false);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+
+  // OTP Login & Reset state
+  const [otpIdentifier, setOtpIdentifier] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpPreviewCode, setOtpPreviewCode] = useState('');
 
   // Register form state
   const [registerData, setRegisterData] = useState({
@@ -42,9 +70,60 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
     const result = await login(loginEmail, loginPassword);
     setLoading(false);
     if (result.success) {
+      if (setCurrentTab) {
+        if (result.user?.role === 'admin') setCurrentTab('admin-dashboard');
+        else if (result.user?.role === 'donor') setCurrentTab('donor-dashboard');
+        else setCurrentTab('requester-dashboard');
+      }
       onClose();
     } else {
-      setError(result.error || 'Invalid email or password.');
+      setError(result.error || 'Invalid email or password. Please verify and try again.');
+    }
+  };
+
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMsg('');
+    if (!otpIdentifier) {
+      setError('Please enter your registered email address or phone number (+94).');
+      return;
+    }
+
+    setLoading(true);
+    const res = await sendOtp(otpIdentifier);
+    setLoading(false);
+
+    if (res.success) {
+      setOtpSent(true);
+      if (res.otpPreview) setOtpPreviewCode(res.otpPreview);
+      setSuccessMsg(`OTP sent to phone (${res.phone || otpIdentifier}) and email (${res.email || otpIdentifier})!`);
+    } else {
+      setError(res.error || 'User not found. Please verify your email or phone.');
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!otpCode) {
+      setError('Please enter the 6-digit OTP verification code.');
+      return;
+    }
+
+    setLoading(true);
+    const res = await verifyOtp(otpIdentifier, otpCode, newPassword || undefined);
+    setLoading(false);
+
+    if (res.success) {
+      if (setCurrentTab) {
+        if (res.user?.role === 'admin') setCurrentTab('admin-dashboard');
+        else if (res.user?.role === 'donor') setCurrentTab('donor-dashboard');
+        else setCurrentTab('requester-dashboard');
+      }
+      onClose();
+    } else {
+      setError(res.error || 'Invalid OTP code. Please try again.');
     }
   };
 
@@ -73,7 +152,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
     }
 
     if (!validateSriLankanPhone(registerData.phone)) {
-      setError('Please enter a valid Sri Lankan phone number (e.g. +94 77 123 4567 or 0771234567).');
+      setError('Please enter a valid Sri Lankan mobile number (e.g. +94 77 123 4567 or 0771234567).');
       return;
     }
 
@@ -84,19 +163,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
     });
     setLoading(false);
     if (result.success) {
-      onClose();
+      setMode('login');
+      setLoginEmail(registerData.email);
+      setLoginPassword('');
+      setError('');
+      setSuccessMsg('Registration completed successfully! Please sign in with your email and password to continue.');
+      setRegisterData((prev) => ({
+        ...prev,
+        password: '',
+        confirmPassword: '',
+      }));
     } else {
-      setError(result.error || 'Registration failed. This email may already be in use.');
+      setError(result.error || 'Registration failed. This email may already be registered.');
     }
-  };
-
-  const handleQuickLogin = async (email: string, pass: string) => {
-    setLoginEmail(email);
-    setLoginPassword(pass);
-    setLoading(true);
-    await login(email, pass);
-    setLoading(false);
-    onClose();
   };
 
   const availableDistricts = SRI_LANKA_PROVINCES[registerData.province]?.districts || ['Jaffna'];
@@ -104,18 +183,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-rose-100 relative max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-rose-100 relative max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="bg-[#B80024] p-5 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-white text-[#B80024] flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-white text-[#B80024] flex items-center justify-center shadow-xs">
               <Heart className="w-5 h-5 fill-[#B80024]" />
             </div>
             <div>
               <h3 className="font-extrabold text-lg">
-                {mode === 'login' ? 'Welcome to LifeLink' : 'Create an Account'}
+                {mode === 'login'
+                  ? 'Sign In to LifeLink'
+                  : mode === 'register'
+                  ? 'Create New Account'
+                  : 'OTP & Password Reset'}
               </h3>
-              <p className="text-xs text-rose-200">Sri Lanka Blood Donor Network</p>
+              <p className="text-xs text-rose-200">Sri Lanka Blood Donor Network • Sri Lanka</p>
             </div>
           </div>
           <button
@@ -132,6 +215,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
             onClick={() => {
               setMode('login');
               setError('');
+              setSuccessMsg('');
             }}
             className={`flex-1 py-3 text-xs font-extrabold transition ${
               mode === 'login'
@@ -145,6 +229,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
             onClick={() => {
               setMode('register');
               setError('');
+              setSuccessMsg('');
             }}
             className={`flex-1 py-3 text-xs font-extrabold transition ${
               mode === 'register'
@@ -153,6 +238,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
             }`}
           >
             Register
+          </button>
+          <button
+            onClick={() => {
+              setMode('otp');
+              setError('');
+              setSuccessMsg('');
+            }}
+            className={`px-3 py-3 text-xs font-extrabold transition ${
+              mode === 'otp'
+                ? 'text-[#B80024] border-b-2 border-[#B80024] bg-white'
+                : 'text-slate-600 hover:text-[#B80024]'
+            }`}
+          >
+            SMS / OTP
           </button>
         </div>
 
@@ -165,10 +264,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
             </div>
           )}
 
-          {mode === 'login' ? (
+          {successMsg && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          {/* SIGN IN VIEW */}
+          {mode === 'login' && (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
                   Email Address
                 </label>
                 <input
@@ -176,25 +284,46 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
                   required
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="e.g. admin@lifelink.lk"
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
+                  placeholder="e.g. yourname@gmail.com"
+                  className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none transition"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700">
+                  <label className="block text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" />
                     Password
                   </label>
-                  <span className="text-[10px] text-slate-400">Default: Admin@1234</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOtpIdentifier(loginEmail);
+                      setMode('otp');
+                      setError('');
+                    }}
+                    className="text-[11px] font-bold text-[#B80024] hover:underline"
+                  >
+                    Forgot Password / Get OTP?
+                  </button>
                 </div>
-                <input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
-                />
+                <div className="relative">
+                  <input
+                    type={showLoginPassword ? 'text' : 'password'}
+                    required
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="w-full px-3.5 py-2.5 pr-10 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none transition"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword(!showLoginPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
 
               <button
@@ -202,57 +331,124 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
                 disabled={loading}
                 className="w-full py-2.5 text-sm font-bold text-white bg-[#B80024] hover:bg-[#98001E] rounded-xl shadow-md transition disabled:opacity-50"
               >
-                {loading ? 'Signing in...' : 'Sign In'}
+                {loading ? 'Signing In...' : 'Sign In'}
               </button>
 
-              {/* Fast 1-Click Login options for reviewers */}
-              <div className="pt-3 border-t border-rose-100">
-                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 text-center">
-                  Quick Demo Accounts
-                </p>
-                <div className="space-y-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('divya@lifelink.lk', 'Donor@1234')}
-                    className="w-full text-left px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-medium text-slate-800 flex items-center justify-between transition"
-                  >
-                    <span>
-                      <strong className="text-[#B80024]">Divya K.</strong> (Donor • Jaffna • O+)
-                    </span>
-                    <span className="text-[10px] bg-white px-2 py-0.5 rounded-full font-bold text-[#B80024]">
-                      Login
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('ravi@lifelink.lk', 'Requester@1234')}
-                    className="w-full text-left px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-medium text-slate-800 flex items-center justify-between transition"
-                  >
-                    <span>
-                      <strong className="text-slate-900">Ravi S.</strong> (Requester • Jaffna)
-                    </span>
-                    <span className="text-[10px] bg-white px-2 py-0.5 rounded-full font-bold text-slate-700">
-                      Login
-                    </span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleQuickLogin('admin@lifelink.lk', 'Admin@1234')}
-                    className="w-full text-left px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-xs font-medium text-slate-800 flex items-center justify-between transition"
-                  >
-                    <span>
-                      <strong className="text-slate-900">Dr. Ketheeswaran</strong> (Admin)
-                    </span>
-                    <span className="text-[10px] bg-white px-2 py-0.5 rounded-full font-bold text-slate-800">
-                      Login
-                    </span>
-                  </button>
-                </div>
+              <div className="pt-2 text-center text-xs text-slate-500">
+                Don&apos;t have an account yet?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('register');
+                    setError('');
+                    setSuccessMsg('');
+                  }}
+                  className="font-bold text-[#B80024] hover:underline cursor-pointer"
+                >
+                  Create New Account
+                </button>
               </div>
             </form>
-          ) : (
+          )}
+
+          {/* OTP / PASSWORD RESET VIEW */}
+          {mode === 'otp' && (
+            <div className="space-y-4">
+              <div className="bg-rose-50/70 p-3 rounded-2xl border border-rose-100 text-xs text-slate-700">
+                <p className="font-bold text-[#B80024] flex items-center gap-1.5 mb-1">
+                  <KeyRound className="w-4 h-4" />
+                  SMS & Email Login OTP
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  Enter your registered Sri Lankan phone number (+94) or Gmail address to receive an instant verification code.
+                </p>
+              </div>
+
+              {!otpSent ? (
+                <form onSubmit={handleSendOtp} className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Email or Phone Number (+94)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={otpIdentifier}
+                      onChange={(e) => setOtpIdentifier(e.target.value)}
+                      placeholder="e.g. +94 77 123 4567 or email@gmail.com"
+                      className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 text-sm font-bold text-white bg-[#B80024] hover:bg-[#98001E] rounded-xl shadow-md transition disabled:opacity-50"
+                  >
+                    {loading ? 'Sending Code...' : 'Send OTP to Phone & Email'}
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOtp} className="space-y-3.5">
+                  {otpPreviewCode && (
+                    <div className="bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl text-xs text-emerald-800 flex items-center justify-between">
+                      <span>SMS & Email OTP Code:</span>
+                      <span className="font-mono font-black text-sm text-emerald-700 bg-white px-2 py-0.5 rounded border border-emerald-300">
+                        {otpPreviewCode}
+                      </span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Enter 6-Digit OTP Code
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      placeholder="123456"
+                      className="w-full px-3.5 py-2.5 text-center font-mono tracking-widest text-lg font-bold border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Set New Password (Optional)
+                    </label>
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password to reset"
+                      className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full py-2.5 text-sm font-bold text-white bg-[#B80024] hover:bg-[#98001E] rounded-xl shadow-md transition disabled:opacity-50"
+                  >
+                    {loading ? 'Verifying...' : 'Verify OTP & Log In'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setOtpSent(false)}
+                    className="w-full text-center text-xs font-bold text-slate-500 hover:text-slate-700"
+                  >
+                    Change Email or Phone
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
+
+          {/* REGISTER VIEW */}
+          {mode === 'register' && (
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
               {/* Role selector */}
               <div>
@@ -328,35 +524,61 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Create Password *
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    value={registerData.password}
-                    onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
-                    placeholder="Min 6 characters"
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
-                  />
+              <div className="bg-rose-50/50 p-2.5 rounded-xl border border-rose-100">
+                <p className="text-[11px] font-bold text-[#B80024] mb-1.5">
+                  Set Your Login Password
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Password *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showRegPassword ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        value={registerData.password}
+                        onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
+                        placeholder="Min 6 chars"
+                        className="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegPassword(!showRegPassword)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showRegPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Confirm *
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showRegConfirm ? 'text' : 'password'}
+                        required
+                        minLength={6}
+                        value={registerData.confirmPassword}
+                        onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
+                        placeholder="Re-enter password"
+                        className="w-full px-3 py-2 pr-8 text-xs border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegConfirm(!showRegConfirm)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showRegConfirm ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Confirm Password *
-                  </label>
-                  <input
-                    type="password"
-                    required
-                    minLength={6}
-                    value={registerData.confirmPassword}
-                    onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
-                    placeholder="Re-enter password"
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
-                  />
-                </div>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Remember this password to log in with your email address later.
+                </p>
               </div>
 
               {role === 'donor' && (
@@ -453,10 +675,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
                   id="consent"
                   checked={registerData.consentGiven}
                   onChange={(e) => setRegisterData({ ...registerData, consentGiven: e.target.checked })}
-                  className="mt-0.5 rounded-sm text-[#B80024] focus:ring-[#B80024]"
+                  className="mt-0.5 rounded text-[#B80024] focus:ring-[#B80024]"
                 />
-                <label htmlFor="consent">
-                  I agree to receive emergency blood requests via LifeLink and confirm that medical eligibility will be validated by hospital healthcare staff.
+                <label htmlFor="consent" className="text-[11px] leading-tight text-slate-600">
+                  I agree to receive emergency blood match alerts on my phone (+94) and email under Sri Lanka NBTS regulations.
                 </label>
               </div>
 
@@ -467,6 +689,21 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
               >
                 {loading ? 'Creating Account...' : 'Complete Registration'}
               </button>
+
+              <div className="pt-2 text-center text-xs text-slate-500">
+                Already registered?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setError('');
+                    setSuccessMsg('');
+                  }}
+                  className="font-bold text-[#B80024] hover:underline cursor-pointer"
+                >
+                  Sign In here
+                </button>
+              </div>
             </form>
           )}
         </div>

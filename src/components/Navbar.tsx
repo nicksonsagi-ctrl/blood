@@ -31,7 +31,8 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notifMenuOpen, setNotifMenuOpen] = useState(false);
 
-  const navLinks = [
+  // Role-specific navigation links
+  let navLinks = [
     { id: 'home', label: t.home },
     { id: 'find-donors', label: t.findDonors },
     { id: 'request-blood', label: t.requestBlood },
@@ -39,6 +40,54 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
     { id: 'about', label: t.about },
     { id: 'contact', label: t.contact },
   ];
+
+  if (user && role === 'donor') {
+    navLinks = [
+      {
+        id: 'donor-dashboard',
+        label: language === 'ta' ? 'என் டேஷ்போர்டு' : language === 'si' ? 'මගේ උපකරණ පුවරුව' : 'My Dashboard',
+      },
+      {
+        id: 'urgent-requests',
+        label: language === 'ta' ? 'அவசர தேவைகள் (தானமளி)' : language === 'si' ? 'හදිසි අවශ්‍යතා' : 'Urgent Needs (Donate)',
+      },
+      {
+        id: 'campaigns',
+        label: language === 'ta' ? 'இரத்த தான முகாம்கள்' : language === 'si' ? 'ලේ දන් දීමේ කඳවුරු' : 'Camps & Blood Banks',
+      },
+      {
+        id: 'about',
+        label: language === 'ta' ? 'விதிகள் & தகுதி' : language === 'si' ? 'සුදුසුකම්' : 'Eligibility & Guide',
+      },
+      {
+        id: 'contact',
+        label: language === 'ta' ? 'உதவி மையம்' : language === 'si' ? 'සම්බන්ධ වන්න' : 'Blood Bank Help',
+      },
+    ];
+  } else if (user && role === 'requester') {
+    navLinks = [
+      {
+        id: 'requester-dashboard',
+        label: language === 'ta' ? 'என் கோரிக்கைகள்' : language === 'si' ? 'මගේ ඉල්ලීම්' : 'My Requests',
+      },
+      { id: 'find-donors', label: t.findDonors },
+      { id: 'request-blood', label: t.requestBlood },
+      { id: 'campaigns', label: t.campaigns },
+      { id: 'about', label: t.about },
+      { id: 'contact', label: t.contact },
+    ];
+  } else if (user && role === 'admin') {
+    navLinks = [
+      {
+        id: 'admin-dashboard',
+        label: language === 'ta' ? 'நிர்வாக பலகை' : language === 'si' ? 'පරිපාලක පුවරුව' : 'Admin Portal',
+      },
+      { id: 'find-donors', label: language === 'ta' ? 'தானியாளர்கள் விபரம்' : 'Donors Directory' },
+      { id: 'request-blood', label: language === 'ta' ? 'இரத்தக் கோரிக்கைகள்' : 'Blood Requests' },
+      { id: 'campaigns', label: t.campaigns },
+      { id: 'contact', label: t.contact },
+    ];
+  }
 
   const handleNavClick = (tabId: string) => {
     setCurrentTab(tabId);
@@ -256,6 +305,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
                       onClick={() => {
                         logout();
                         setUserMenuOpen(false);
+                        handleNavClick('home');
                       }}
                       className="w-full text-left px-4 py-2.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 flex items-center gap-2"
                     >

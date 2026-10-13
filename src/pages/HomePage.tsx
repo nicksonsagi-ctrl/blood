@@ -25,8 +25,8 @@ interface HomePageProps {
 }
 
 export const HomePage: React.FC<HomePageProps> = ({ setCurrentTab, openAuthModal }) => {
-  const { t } = useLanguage();
-  const { user } = useAuth();
+  const { t, language } = useLanguage();
+  const { user, role, donorProfile } = useAuth();
   const [stats, setStats] = useState<AppStats>({
     registeredDonors: 5200,
     activeRequests: 4,
@@ -75,45 +75,94 @@ export const HomePage: React.FC<HomePageProps> = ({ setCurrentTab, openAuthModal
             <div className="lg:col-span-7 space-y-6 text-left">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-rose-100/80 border border-rose-200 text-[#B80024] text-xs font-bold tracking-wide">
                 <span className="w-2 h-2 rounded-full bg-[#B80024] animate-pulse"></span>
-                <span>Sri Lanka Emergency Blood Coordination</span>
-              </div>
-
-              <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black text-slate-900 tracking-tight leading-[1.12]">
-                {t.heroTitlePrefix}{' '}
-                <span className="text-[#B80024] underline decoration-rose-200 decoration-wavy decoration-2">
-                  Blood Donors
+                <span>
+                  {user && role === 'donor'
+                    ? `Logged in: ${user.fullName} (${donorProfile?.bloodGroup || 'O+'} Hero Donor)`
+                    : 'Sri Lanka Emergency Blood Coordination'}
                 </span>
-                <br />
-                {t.heroTitleSuffix}
-              </h1>
-
-              <p className="text-base sm:text-lg text-slate-600 max-w-xl font-normal leading-relaxed">
-                {t.heroSubtitle}
-              </p>
-
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <button
-                  onClick={() => setCurrentTab('find-donors')}
-                  className="flex items-center gap-2 px-6 py-3.5 bg-[#B80024] hover:bg-[#98001E] text-white text-sm font-extrabold rounded-2xl shadow-lg shadow-rose-900/25 transition-all hover:scale-103"
-                >
-                  <span>{t.btnFindDonors}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-
-                <button
-                  onClick={() => (user ? setCurrentTab('donor-dashboard') : openAuthModal('register'))}
-                  className="px-6 py-3.5 bg-white hover:bg-rose-50 text-[#B80024] border-2 border-rose-200 text-sm font-extrabold rounded-2xl shadow-sm transition hover:scale-103"
-                >
-                  {t.btnBecomeDonor}
-                </button>
-
-                <button
-                  onClick={() => setCurrentTab('request-blood')}
-                  className="px-6 py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-900 text-sm font-extrabold rounded-2xl border border-rose-200 transition"
-                >
-                  {t.btnRequestBlood}
-                </button>
               </div>
+
+              {user && role === 'donor' ? (
+                <>
+                  <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black text-slate-900 tracking-tight leading-[1.12]">
+                    {language === 'ta' ? 'வணக்கம் ' : 'Welcome Back, '}
+                    <span className="text-[#B80024] underline decoration-rose-200 decoration-wavy decoration-2">
+                      {user.fullName.split(' ')[0]}
+                    </span>
+                    <br />
+                    {language === 'ta' ? 'உயிர் காக்க தயாரா?' : 'Ready to Save Lives?'}
+                  </h1>
+
+                  <p className="text-base sm:text-lg text-slate-600 max-w-xl font-normal leading-relaxed">
+                    {language === 'ta'
+                      ? 'உங்கள் இரத்த தானம் இலங்கையின் பல நோயாளிகளுக்கு மறுவாழ்வு அளிக்கிறது. உங்கள் டேஷ்போர்டில் அவசரத் தேவைகளையும் இரத்த வங்கிகளையும் பார்வையிடலாம்.'
+                      : `Your ${donorProfile?.bloodGroup || 'O+'} blood group can save up to 3 lives today. Check urgent hospital requests, view upcoming donation camps, or manage your availability.`}
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <button
+                      onClick={() => setCurrentTab('donor-dashboard')}
+                      className="flex items-center gap-2 px-6 py-3.5 bg-[#B80024] hover:bg-[#98001E] text-white text-sm font-extrabold rounded-2xl shadow-lg shadow-rose-900/25 transition-all hover:scale-103"
+                    >
+                      <span>{language === 'ta' ? 'என் டேஷ்போர்டு செல்க' : 'Go to My Donor Dashboard'}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => setCurrentTab('urgent-requests')}
+                      className="px-6 py-3.5 bg-white hover:bg-rose-50 text-[#B80024] border-2 border-rose-200 text-sm font-extrabold rounded-2xl shadow-sm transition hover:scale-103"
+                    >
+                      {language === 'ta' ? 'அவசர இரத்தத் தேவைகள் (தானமளி)' : 'Urgent Patient Needs (Donate)'}
+                    </button>
+
+                    <button
+                      onClick={() => setCurrentTab('campaigns')}
+                      className="px-6 py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-900 text-sm font-extrabold rounded-2xl border border-rose-200 transition"
+                    >
+                      {language === 'ta' ? 'தான முகாம்கள் & வங்கிகள்' : 'Donation Camps & Banks'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black text-slate-900 tracking-tight leading-[1.12]">
+                    {t.heroTitlePrefix}{' '}
+                    <span className="text-[#B80024] underline decoration-rose-200 decoration-wavy decoration-2">
+                      Blood Donors
+                    </span>
+                    <br />
+                    {t.heroTitleSuffix}
+                  </h1>
+
+                  <p className="text-base sm:text-lg text-slate-600 max-w-xl font-normal leading-relaxed">
+                    {t.heroSubtitle}
+                  </p>
+
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <button
+                      onClick={() => setCurrentTab('find-donors')}
+                      className="flex items-center gap-2 px-6 py-3.5 bg-[#B80024] hover:bg-[#98001E] text-white text-sm font-extrabold rounded-2xl shadow-lg shadow-rose-900/25 transition-all hover:scale-103"
+                    >
+                      <span>{t.btnFindDonors}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={() => openAuthModal('register')}
+                      className="px-6 py-3.5 bg-white hover:bg-rose-50 text-[#B80024] border-2 border-rose-200 text-sm font-extrabold rounded-2xl shadow-sm transition hover:scale-103"
+                    >
+                      {t.btnBecomeDonor}
+                    </button>
+
+                    <button
+                      onClick={() => setCurrentTab('request-blood')}
+                      className="px-6 py-3.5 bg-rose-50 hover:bg-rose-100 text-rose-900 text-sm font-extrabold rounded-2xl border border-rose-200 transition"
+                    >
+                      {t.btnRequestBlood}
+                    </button>
+                  </div>
+                </>
+              )}
 
               <div className="flex items-center gap-6 pt-4 text-xs font-semibold text-slate-500">
                 <div className="flex items-center gap-1.5">

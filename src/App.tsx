@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { LanguageProvider } from './context/LanguageContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { EmergencyNotice } from './components/EmergencyNotice';
 import { AuthModal } from './components/AuthModal';
+import { SecurityAlertBanner } from './components/SecurityAlertBanner';
 
 import { HomePage } from './pages/HomePage';
 import { FindDonorsPage } from './pages/FindDonorsPage';
@@ -23,7 +24,26 @@ function MainApp() {
     mode: 'login',
   });
 
-  const { role } = useAuth();
+  const { role, isAuthenticated } = useAuth();
+  const prevAuthRef = useRef(isAuthenticated);
+
+  // Route protection and auto-redirect on login
+  useEffect(() => {
+    if (!prevAuthRef.current && isAuthenticated) {
+      if (role === 'donor') setCurrentTab('donor-dashboard');
+      else if (role === 'admin') setCurrentTab('admin-dashboard');
+      else if (role === 'requester') setCurrentTab('requester-dashboard');
+    }
+    prevAuthRef.current = isAuthenticated;
+
+    if (!isAuthenticated) {
+      if (['admin-dashboard', 'donor-dashboard', 'requester-dashboard', 'urgent-requests'].includes(currentTab)) {
+        setCurrentTab('home');
+      }
+    } else if (role !== 'admin' && currentTab === 'admin-dashboard') {
+      setCurrentTab('home');
+    }
+  }, [isAuthenticated, role, currentTab]);
 
   const handleTabChange = (tab: string) => {
     setCurrentTab(tab);
@@ -33,7 +53,7 @@ function MainApp() {
   const renderContent = () => {
     switch (currentTab) {
       case 'find-donors':
-        return <FindDonorsPage />;
+        return <FindDonorsPage setCurrentTab={handleTabChange} />;
       case 'request-blood':
         return <RequestBloodPage setCurrentTab={handleTabChange} />;
       case 'campaigns':
@@ -47,12 +67,46 @@ function MainApp() {
         );
       case 'contact':
         return <ContactPage />;
+      case 'urgent-requests':
+        if (!isAuthenticated) {
+          return (
+            <HomePage
+              setCurrentTab={handleTabChange}
+              openAuthModal={(mode) => setAuthModal({ open: true, mode })}
+            />
+          );
+        }
+        return <DonorDashboard setCurrentTab={handleTabChange} initialSection="urgent-requests" />;
       case 'donor-dashboard':
+        if (!isAuthenticated) {
+          return (
+            <HomePage
+              setCurrentTab={handleTabChange}
+              openAuthModal={(mode) => setAuthModal({ open: true, mode })}
+            />
+          );
+        }
         return <DonorDashboard setCurrentTab={handleTabChange} />;
       case 'requester-dashboard':
+        if (!isAuthenticated) {
+          return (
+            <HomePage
+              setCurrentTab={handleTabChange}
+              openAuthModal={(mode) => setAuthModal({ open: true, mode })}
+            />
+          );
+        }
         return <RequesterDashboard setCurrentTab={handleTabChange} />;
       case 'admin-dashboard':
-        return <AdminDashboard />;
+        if (!isAuthenticated || role !== 'admin') {
+          return (
+            <HomePage
+              setCurrentTab={handleTabChange}
+              openAuthModal={(mode) => setAuthModal({ open: true, mode })}
+            />
+          );
+        }
+        return <AdminDashboard setCurrentTab={handleTabChange} />;
       case 'home':
       default:
         return (
@@ -86,9 +140,13 @@ function MainApp() {
       {authModal.open && (
         <AuthModal
           initialMode={authModal.mode}
+          setCurrentTab={handleTabChange}
           onClose={() => setAuthModal({ open: false, mode: 'login' })}
         />
       )}
+
+      {/* Real-time Phone & Email Security Notification Banner */}
+      <SecurityAlertBanner />
     </div>
   );
 }

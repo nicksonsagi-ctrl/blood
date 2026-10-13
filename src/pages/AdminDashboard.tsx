@@ -17,6 +17,7 @@ import {
   Plus,
   Trash2,
   RefreshCw,
+  LogOut,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -33,8 +34,14 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { DonorProfile, BloodRequest, ContactMessage, BloodCampaign, AuditLog } from '../types';
+import { useAuth } from '../context/AuthContext';
 
-export const AdminDashboard: React.FC = () => {
+interface AdminDashboardProps {
+  setCurrentTab?: (tab: string) => void;
+}
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ setCurrentTab }) => {
+  const { logout } = useAuth();
   const [activeTab, setActiveTab] = useState<
     'overview' | 'donors' | 'requests' | 'messages' | 'campaigns' | 'reports' | 'audit'
   >('overview');
@@ -266,6 +273,17 @@ export const AdminDashboard: React.FC = () => {
             <Download className="w-4 h-4" />
             <span>Export Requests CSV</span>
           </a>
+          <button
+            onClick={() => {
+              logout();
+              if (setCurrentTab) setCurrentTab('home');
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-[#B80024] border border-rose-200 text-xs font-extrabold rounded-xl transition shadow-xs"
+            title="Sign Out of Admin Dashboard"
+          >
+            <LogOut className="w-4 h-4 text-[#B80024]" />
+            <span>Sign Out</span>
+          </button>
         </div>
       </div>
 

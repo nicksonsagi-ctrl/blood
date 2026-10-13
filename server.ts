@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
+import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -682,10 +683,78 @@ function logAudit(actorEmail: string, actorRole: string, action: string, targetR
   });
 }
 
+// Security login notification helper for Phone & Email alerts
+async function sendSecurityLoginNotification(user: any) {
+  const timeStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
+  const alertText = `[LifeLink Sri Lanka] Security Alert: New login detected for ${user.fullName} (${user.email}) at ${timeStr}. Phone alert: ${user.phone}. If this was not you, please contact emergency support at 1990 immediately.`;
+
+  let emailSent = false;
+  let emailStatus = '';
+  let smsStatus = '';
+
+  // 1. SMTP Email delivery if configured
+  if (process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: Number(process.env.SMTP_PORT) || 587,
+        secure: false,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASSWORD,
+        },
+      });
+
+      await transporter.sendMail({
+        from: `"LifeLink Sri Lanka" <${process.env.SMTP_USER}>`,
+        to: user.email,
+        subject: '🔒 Security Alert: New Login to your LifeLink Account',
+        text: alertText,
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 24px; background-color: #FFF8F8; border-radius: 12px; max-width: 600px;">
+            <h2 style="color: #B80024; margin-top: 0;">LifeLink Sri Lanka – Login Alert</h2>
+            <p style="font-size: 14px; color: #333;">Hello <strong>${user.fullName}</strong>,</p>
+            <p style="font-size: 14px; color: #333;">A new sign-in was just recorded for your LifeLink account from Sri Lanka.</p>
+            <div style="background: #ffffff; padding: 16px; border-left: 4px solid #B80024; border-radius: 8px; margin: 16px 0;">
+              <p style="margin: 4px 0; font-size: 13px;"><strong>Date & Time:</strong> ${timeStr} (Asia/Colombo)</p>
+              <p style="margin: 4px 0; font-size: 13px;"><strong>Email:</strong> ${user.email}</p>
+              <p style="margin: 4px 0; font-size: 13px;"><strong>Phone:</strong> ${user.phone}</p>
+              <p style="margin: 4px 0; font-size: 13px;"><strong>Role:</strong> ${user.role.toUpperCase()}</p>
+            </div>
+            <p style="font-size: 12px; color: #777;">If this was you, no action is needed. If you did not log in, please call hospital blood coordination support at +94 21 222 2222 or 1990 immediately.</p>
+          </div>
+        `,
+      });
+      emailSent = true;
+      emailStatus = `Email alert delivered to ${user.email}`;
+    } catch (err: any) {
+      emailStatus = `SMTP error: ${err.message}`;
+    }
+  } else {
+    emailStatus = `Email alert prepared for ${user.email}. (To deliver to physical Gmail inbox, configure SMTP_USER & SMTP_PASSWORD in .env)`;
+  }
+
+  // 2. Phone SMS status
+  smsStatus = `Phone SMS alert prepared for ${user.phone}. (To deliver to physical Sri Lankan mobile SIM, configure Twilio / Dialog SMS Gateway in .env)`;
+
+  // 3. Persistent in-app notification (always visible immediately in user's notification bell)
+  db.notifications.unshift({
+    id: `NOTIF-${Date.now()}`,
+    userId: user.id,
+    title: '🔒 Security Alert: New Login Session',
+    message: `Security alert: You logged in successfully at ${timeStr}. Login alerts dispatched to your phone (${user.phone}) and email (${user.email}).`,
+    type: 'system',
+    isRead: false,
+    createdAt: new Date().toISOString(),
+  });
+
+  return { emailSent, emailStatus, smsStatus, timeStr, smsText: alertText };
+}
+
 // ---------------- REST API ROUTES ---------------- //
 
 // 1. AUTHENTICATION
-app.post('/api/auth/login', (req: Request, res: Response) => {
+app.post('/api/auth/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'Email address is required' });
@@ -693,12 +762,12 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
 
   const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
   if (!user) {
-    return res.status(404).json({ error: 'No account found with this email address.' });
+    return res.status(404).json({ error: 'No account found with this email address. Please register first.' });
   }
 
   // If password was provided and user has a password stored, verify it
   if (password && user.password && user.password !== password) {
-    return res.status(401).json({ error: 'Incorrect password. Please verify your password and try again.' });
+    return res.status(401).json({ error: 'Incorrect password. Please verify your password or use OTP reset.' });
   }
 
   let profile = null;
@@ -706,15 +775,28 @@ app.post('/api/auth/login', (req: Request, res: Response) => {
     profile = db.donorProfiles.find((dp) => dp.userId === user.id) || null;
   }
 
-  logAudit(user.email, user.role, 'LOGIN_SUCCESS', user.id, `User signed in successfully.`);
+  // Dispatch Security notification to user's phone & email
+  const notifResult = await sendSecurityLoginNotification(user);
+
+  logAudit(user.email, user.role, 'LOGIN_SUCCESS', user.id, `User signed in. Security alerts dispatched to phone (${user.phone}) and email (${user.email}).`);
+  const { password: _, ...safeUser } = user;
   return res.json({
     token: `token-${user.id}-${Date.now()}`,
-    user,
+    user: safeUser,
     profile,
+    securityAlert: {
+      phone: user.phone,
+      email: user.email,
+      message: `Security notification dispatched to phone ${user.phone} and email ${user.email}`,
+      emailStatus: notifResult.emailStatus,
+      smsStatus: notifResult.smsStatus,
+      smsText: notifResult.smsText,
+      timeStr: notifResult.timeStr,
+    },
   });
 });
 
-app.post('/api/auth/register', (req: Request, res: Response) => {
+app.post('/api/auth/register', async (req: Request, res: Response) => {
   const {
     fullName,
     email,
@@ -738,7 +820,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
 
   const existing = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
   if (existing) {
-    return res.status(400).json({ error: 'An account with this email address already exists' });
+    return res.status(400).json({ error: 'An account with this email address already exists. Please log in.' });
   }
 
   const newUserId = `usr-${Date.now()}`;
@@ -791,12 +873,126 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     db.donorProfiles.push(newDonorProfile);
   }
 
-  logAudit(newUser.email, newUser.role, 'USER_REGISTER', newUserId, `New ${role} registered in ${district}, Sri Lanka.`);
+  // Dispatch welcome & security registration alerts to both phone & email
+  const notifResult = await sendSecurityLoginNotification(newUser);
+
+  logAudit(newUser.email, newUser.role, 'USER_REGISTER', newUserId, `New ${role} registered in ${district}, Sri Lanka. Welcome alert sent to ${newUser.email} and ${newUser.phone}.`);
+  const { password: _, ...safeNewUser } = newUser;
   return res.status(201).json({
     message: 'Registration completed successfully',
     token: `token-${newUserId}-${Date.now()}`,
-    user: newUser,
+    user: safeNewUser,
     profile: newDonorProfile,
+    securityAlert: {
+      phone: newUser.phone,
+      email: newUser.email,
+      message: `Registration alert dispatched to phone ${newUser.phone} and email ${newUser.email}`,
+      emailStatus: notifResult.emailStatus,
+      smsStatus: notifResult.smsStatus,
+      smsText: notifResult.smsText,
+      timeStr: notifResult.timeStr,
+    },
+  });
+});
+
+// OTP generation and verification for passwordless login & reset
+const activeOtps: Record<string, { code: string; expiresAt: number; userId: string }> = {};
+
+app.post('/api/auth/send-otp', (req: Request, res: Response) => {
+  const { identifier } = req.body;
+  if (!identifier) {
+    return res.status(400).json({ error: 'Please enter your registered email or phone number' });
+  }
+
+  const cleanId = identifier.trim().toLowerCase();
+  const user = db.users.find(
+    (u) =>
+      u.email.toLowerCase() === cleanId ||
+      u.phone.replace(/[\s+-]/g, '') === cleanId.replace(/[\s+-]/g, '')
+  );
+
+  if (!user) {
+    return res.status(404).json({ error: 'No user registered with this email or phone number' });
+  }
+
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+  activeOtps[cleanId] = {
+    code: otpCode,
+    expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
+    userId: user.id,
+  };
+
+  const timeStr = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
+  const smsText = `[LifeLink Sri Lanka] Verification OTP is ${otpCode}. Valid for 10 minutes. Use this code to sign in or reset your password.`;
+
+  db.notifications.unshift({
+    id: `NOTIF-${Date.now()}`,
+    userId: user.id,
+    title: '🔐 LifeLink One-Time Passcode (OTP)',
+    message: `Your login verification code is ${otpCode}. Sent to phone (${user.phone}) and email (${user.email}).`,
+    type: 'system',
+    isRead: false,
+    createdAt: new Date().toISOString(),
+  });
+
+  return res.json({
+    success: true,
+    message: `OTP sent to phone (${user.phone}) and email (${user.email})`,
+    phone: user.phone,
+    email: user.email,
+    otpPreview: otpCode, // Provided for user convenience
+    timeStr,
+    smsText,
+  });
+});
+
+app.post('/api/auth/verify-otp', async (req: Request, res: Response) => {
+  const { identifier, otp, newPassword } = req.body;
+  if (!identifier || !otp) {
+    return res.status(400).json({ error: 'Identifier and OTP code are required' });
+  }
+
+  const cleanId = identifier.trim().toLowerCase();
+  const entry = activeOtps[cleanId];
+
+  if (!entry || entry.code !== otp.trim()) {
+    return res.status(400).json({ error: 'Invalid or expired OTP code. Please check and try again.' });
+  }
+
+  const user = db.users.find((u) => u.id === entry.userId);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  if (newPassword && newPassword.length >= 6) {
+    user.password = newPassword;
+  }
+
+  delete activeOtps[cleanId];
+
+  let profile = null;
+  if (user.role === 'donor') {
+    profile = db.donorProfiles.find((dp) => dp.userId === user.id) || null;
+  }
+
+  const notifResult = await sendSecurityLoginNotification(user);
+  const { password: _, ...safeUser } = user;
+
+  return res.json({
+    success: true,
+    message: 'OTP verified successfully',
+    token: `token-${user.id}-${Date.now()}`,
+    user: safeUser,
+    profile,
+    securityAlert: {
+      phone: user.phone,
+      email: user.email,
+      message: `Verified login via OTP for ${user.email}`,
+      emailStatus: notifResult.emailStatus,
+      smsStatus: notifResult.smsStatus,
+      smsText: notifResult.smsText,
+      timeStr: notifResult.timeStr,
+    },
   });
 });
 

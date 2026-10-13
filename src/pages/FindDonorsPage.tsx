@@ -1,13 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, SlidersHorizontal, UserCheck, ShieldCheck, PhoneCall, ChevronDown } from 'lucide-react';
+import { Search, MapPin, SlidersHorizontal, UserCheck, ShieldCheck, PhoneCall, ChevronDown, Heart } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { DonorMap } from '../components/DonorMap';
 import { ContactDonorModal } from '../components/ContactDonorModal';
 import { DonorProfile } from '../types';
 import { SRI_LANKA_DISTRICTS } from '../data/sriLankaData';
 
-export const FindDonorsPage: React.FC = () => {
-  const { t } = useLanguage();
+interface FindDonorsPageProps {
+  setCurrentTab?: (tab: string) => void;
+}
+
+export const FindDonorsPage: React.FC<FindDonorsPageProps> = ({ setCurrentTab }) => {
+  const { t, language } = useLanguage();
+  const { user, role, donorProfile } = useAuth();
   const [bloodGroup, setBloodGroup] = useState<string>('O+');
   const [location, setLocation] = useState<string>('Jaffna');
   const [radius, setRadius] = useState<string>('10 km');
@@ -56,6 +62,38 @@ export const FindDonorsPage: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      {/* Friendly Guide Banner if logged in as a Donor */}
+      {user && role === 'donor' && (
+        <div className="bg-rose-50 border border-rose-200 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-in fade-in duration-200">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#B80024] text-white flex items-center justify-center shrink-0 shadow-sm">
+              <Heart className="w-5 h-5 fill-white" />
+            </div>
+            <div>
+              <p className="font-extrabold text-sm text-slate-900">
+                {language === 'ta'
+                  ? `வணக்கம் ${user.fullName}, நீங்கள் ஒரு இரத்த தானியாளர் (${donorProfile?.bloodGroup || 'O+'})!`
+                  : `Hello ${user.fullName}, you are logged in as a Blood Donor (${donorProfile?.bloodGroup || 'O+'})!`}
+              </p>
+              <p className="text-xs text-slate-600 mt-0.5">
+                {language === 'ta'
+                  ? 'இந்த பக்கம் இரத்தம் தேடும் நோயாளிகளுக்கானது. இரத்தம் தேவைப்படும் நோயாளிகளைப் பார்க்க அல்லது தானம் செய்ய உங்கள் டேஷ்போர்டிற்கு செல்லவும்.'
+                  : 'This directory is for patients & attendants seeking donors. To view hospital patients urgently requesting your blood, check your Donor Dashboard.'}
+              </p>
+            </div>
+          </div>
+
+          {setCurrentTab && (
+            <button
+              onClick={() => setCurrentTab('donor-dashboard')}
+              className="px-5 py-2.5 bg-[#B80024] hover:bg-[#98001E] text-white font-extrabold text-xs rounded-xl shadow-md shadow-rose-900/20 whitespace-nowrap transition"
+            >
+              {language === 'ta' ? 'என் டேஷ்போர்டு செல்க' : 'Go to My Donor Dashboard'}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Page Header */}
       <div className="space-y-2">
         <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
