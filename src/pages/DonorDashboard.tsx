@@ -32,7 +32,7 @@ import { DonorContactRequest, DonationRecord, BloodRequest } from '../types';
 
 interface DonorDashboardProps {
   setCurrentTab: (tab: string) => void;
-  initialSection?: 'overview' | 'urgent-requests' | 'centers' | 'card' | 'history';
+  initialSection?: 'overview' | 'direct-requests' | 'urgent-requests' | 'centers' | 'card' | 'history';
 }
 
 export const DonorDashboard: React.FC<DonorDashboardProps> = ({
@@ -42,7 +42,7 @@ export const DonorDashboard: React.FC<DonorDashboardProps> = ({
   const { user, donorProfile, updateDonorProfile, logout } = useAuth();
   const { t, language } = useLanguage();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'urgent-requests' | 'centers' | 'card' | 'history'>(
+  const [activeTab, setActiveTab] = useState<'overview' | 'direct-requests' | 'urgent-requests' | 'centers' | 'card' | 'history'>(
     initialSection
   );
 
@@ -83,7 +83,6 @@ export const DonorDashboard: React.FC<DonorDashboardProps> = ({
 
   // Fetch incoming contact requests and live hospital blood requests
   const fetchDonorData = async () => {
-    setLoadingRequests(true);
     try {
       // 1. Fetch live urgent blood requests from Sri Lanka hospitals
       const reqRes = await fetch('/api/requests');
@@ -92,24 +91,16 @@ export const DonorDashboard: React.FC<DonorDashboardProps> = ({
         setLiveRequests(reqData);
       }
 
-      // 2. Fetch pending contact requests for donor
-      setContactRequests([
-        {
-          id: 'CR-901',
-          requesterId: 'usr-requester-1',
-          requesterName: 'Ravi S.',
-          requesterPhone: '+94 71 889 9001',
-          donorId: donorProfile?.id || 'dp-1',
-          patientName: 'Kalaivani S.',
-          hospitalName: 'Teaching Hospital Jaffna',
-          bloodGroup: donorProfile?.bloodGroup || 'O+',
-          units: 2,
-          urgency: 'urgent',
-          message: 'Urgent surgery scheduled at Jaffna Teaching Hospital Surgical Ward 3. Need blood donation.',
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-        },
-      ]);
+      // 2. Fetch direct incoming contact requests for this specific donor from backend API
+      const params = new URLSearchParams();
+      if (donorProfile?.id) params.append('donorId', donorProfile.id);
+      if (user?.id) params.append('userId', user.id);
+
+      const crRes = await fetch(`/api/donors/contact-requests?${params.toString()}`);
+      if (crRes.ok) {
+        const crData = await crRes.json();
+        setContactRequests(crData.requests || []);
+      }
 
       // 3. Donation history
       setDonationHistory([
@@ -159,7 +150,9 @@ export const DonorDashboard: React.FC<DonorDashboardProps> = ({
 
   useEffect(() => {
     fetchDonorData();
-  }, [donorProfile]);
+    const interval = setInterval(fetchDonorData, 5000);
+    return () => clearInterval(interval);
+  }, [donorProfile, user]);
 
   const handleToggleLocation = (loc: string) => {
     if (preferredLocations.includes(loc)) {
@@ -339,6 +332,45 @@ export const DonorDashboard: React.FC<DonorDashboardProps> = ({
         </div>
       </div>
 
+      {/* Emergency Pending Requests Banner */}
+      {contactRequests.filter((r) => r.status === 'pending').length > 0 && (
+        <div className="bg-gradient-to-r from-red-600 via-[#B80024] to-rose-700 text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-red-500 animate-in fade-in duration-300">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-xs flex items-center justify-center shrink-0">
+                <Heart className="w-6 h-6 fill-white text-white animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-white text-[#B80024]">
+                    {language === 'ta' ? 'நேரடி அவசர கோரிக்கை' : 'Direct Patient Request'}
+                  </span>
+                  <span className="text-xs font-bold text-rose-100">
+                    {contactRequests.filter((r) => r.status === 'pending').length} {language === 'ta' ? 'புதிய கோரிக்கைகள்' : 'Pending Request(s)'}
+                  </span>
+                </div>
+                <h3 className="text-lg font-black mt-1">
+                  {language === 'ta'
+                    ? 'Find Donors மூலம் நோயாளி உங்களுக்கு நேரடியாக இரத்தம் கேட்டுள்ளார்!'
+                    : 'A patient has requested blood directly from you via Find Donors!'}
+                </h3>
+                <p className="text-xs text-rose-100 mt-0.5">
+                  {language === 'ta'
+                    ? 'நோயாளியின் விபரங்களை ஆராய்ந்து உடனடியாக பதிலளிக்கவும்.'
+                    : 'Please review the patient details and respond promptly to save a life.'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setActiveTab('direct-requests')}
+              className="px-5 py-2.5 bg-white text-[#B80024] hover:bg-rose-50 font-black text-xs sm:text-sm rounded-xl shadow-md transition whitespace-nowrap self-start md:self-auto"
+            >
+              {language === 'ta' ? 'கோரிக்கைகளைப் பார்க்கவும்' : 'View & Respond'} ({contactRequests.filter((r) => r.status === 'pending').length})
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* 2. Donor Navigation Sub-Tabs */}
       <div className="bg-white rounded-2xl p-2 shadow-md border border-rose-100 flex items-center overflow-x-auto gap-2">
         <button
@@ -351,6 +383,23 @@ export const DonorDashboard: React.FC<DonorDashboardProps> = ({
         >
           <User className="w-4 h-4" />
           <span>{language === 'ta' ? 'சுயவிவரம் & இருப்பு' : 'Overview & Availability'}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('direct-requests')}
+          className={`flex items-center gap-2 px-5 py-3 rounded-xl text-xs sm:text-sm font-extrabold transition whitespace-nowrap relative ${
+            activeTab === 'direct-requests'
+              ? 'bg-[#B80024] text-white shadow-md shadow-rose-900/20'
+              : 'text-slate-700 hover:bg-rose-50 hover:text-[#B80024]'
+          }`}
+        >
+          <Heart className="w-4 h-4" />
+          <span>{language === 'ta' ? 'நேரடிக் கோரிக்கைகள்' : 'Direct Requests'}</span>
+          {contactRequests.filter((r) => r.status === 'pending').length > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+              {contactRequests.filter((r) => r.status === 'pending').length}
+            </span>
+          )}
         </button>
 
         <button
@@ -714,6 +763,159 @@ export const DonorDashboard: React.FC<DonorDashboardProps> = ({
                           {req.status}
                         </span>
                       )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: DIRECT PATIENT REQUESTS (FROM FIND DONORS) */}
+      {activeTab === 'direct-requests' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-rose-100 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-rose-100 pb-4">
+              <div>
+                <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2.5">
+                  <span className="w-3 h-3 rounded-full bg-[#B80024] animate-pulse"></span>
+                  <span>{language === 'ta' ? 'நோயாளி நேரடிக் கோரிக்கைகள் (Find Donors)' : 'Direct Patient Requests (Find Donors)'}</span>
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                  {language === 'ta'
+                    ? 'Find Donors பக்கத்தில் இருந்து நோயாளிகள் அல்லது அவர்களின் உறவினர்கள் உங்களுக்கு நேரடியாக அனுப்பிய இரத்தக் கோரிக்கைகள்.'
+                    : 'Emergency blood requests dispatched directly to your profile by patients and hospital attendants via Find Donors.'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-black px-3.5 py-1.5 rounded-xl bg-rose-50 text-[#B80024] border border-rose-200">
+                  {contactRequests.filter((r) => r.status === 'pending').length} Pending
+                </span>
+                <span className="text-xs font-black px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {contactRequests.filter((r) => r.status === 'accepted').length} Accepted
+                </span>
+                <span className="text-xs font-black px-3.5 py-1.5 rounded-xl bg-slate-100 text-slate-600 border border-slate-200">
+                  {contactRequests.length} Total
+                </span>
+              </div>
+            </div>
+
+            {contactRequests.length === 0 ? (
+              <div className="text-center py-16 space-y-4">
+                <div className="w-16 h-16 rounded-full bg-rose-50 text-[#B80024] flex items-center justify-center mx-auto">
+                  <Heart className="w-8 h-8 fill-rose-100" />
+                </div>
+                <h4 className="text-lg font-black text-slate-800">
+                  {language === 'ta' ? 'இன்னும் நேரடிக் கோரிக்கைகள் எதுவும் வரவில்லை' : 'No Direct Requests Received Yet'}
+                </h4>
+                <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
+                  {language === 'ta'
+                    ? 'இரத்தம் தேடுபவர்கள் "Find Donors" பக்கத்தில் உங்களைத் தேடி "Contact Donor" கொடுக்கும்போது, அவர்களின் கோரிக்கைகள் உடனே இங்கு வந்து சேரும்.'
+                    : 'When patients or attendants find your profile in "Find Donors" and submit a contact request, it will appear here in real time.'}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {contactRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className={`p-6 rounded-3xl border transition shadow-sm ${
+                      req.status === 'pending'
+                        ? 'bg-rose-50/70 border-rose-200 ring-2 ring-[#B80024]/10'
+                        : req.status === 'accepted'
+                        ? 'bg-emerald-50/50 border-emerald-200'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <span className="text-sm font-black uppercase px-3 py-1 rounded-xl bg-[#B80024] text-white shadow-xs">
+                            {req.bloodGroup} • {req.units} Units
+                          </span>
+                          <span
+                            className={`text-xs font-black uppercase px-3 py-1 rounded-full ${
+                              req.urgency === 'urgent' || req.urgency === 'emergency'
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {req.urgency}
+                          </span>
+                          <span className="text-xs text-slate-400 font-medium">
+                            {new Date(req.createdAt).toLocaleString('en-US', { timeZone: 'Asia/Colombo' })}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="text-lg font-black text-slate-900">
+                            {language === 'ta' ? 'நோயாளி:' : 'Patient:'} {req.patientName}
+                          </h4>
+                          <p className="text-xs sm:text-sm font-bold text-slate-700 mt-0.5 flex items-center gap-1.5">
+                            <Building2 className="w-4 h-4 text-[#B80024]" />
+                            <span>{req.hospitalName}</span>
+                          </p>
+                        </div>
+
+                        <div className="p-3.5 bg-white rounded-2xl border border-rose-100 text-xs sm:text-sm text-slate-700 italic">
+                          "{req.message}"
+                        </div>
+
+                        <div className="text-xs text-slate-600 font-medium flex items-center gap-3 flex-wrap">
+                          <span>
+                            {language === 'ta' ? 'கோரியவர்:' : 'Requested by:'} <strong>{req.requesterName}</strong>
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1.5 text-slate-800 font-bold bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                            <PhoneCall className="w-3.5 h-3.5 text-[#B80024]" />
+                            <span>{req.requesterPhone}</span>
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row lg:flex-col items-end gap-3 shrink-0">
+                        {req.status === 'pending' ? (
+                          <>
+                            <button
+                              onClick={() => handleRespondToRequest(req.id, 'accept')}
+                              className="w-full sm:w-auto px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-black rounded-xl transition flex items-center justify-center gap-2 shadow-md shadow-emerald-900/20 hover:scale-102"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>{language === 'ta' ? 'ஏற்றுக்கொள் & உதவ முன்வா' : 'Accept & Share Contact'}</span>
+                            </button>
+                            <button
+                              onClick={() => handleRespondToRequest(req.id, 'decline')}
+                              className="w-full sm:w-auto px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1.5"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              <span>{language === 'ta' ? 'நிராகரி' : 'Decline'}</span>
+                            </button>
+                          </>
+                        ) : (
+                          <div className="text-right space-y-1">
+                            <span
+                              className={`inline-flex items-center gap-1.5 text-xs font-black px-4 py-2 rounded-xl uppercase ${
+                                req.status === 'accepted'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : 'bg-slate-100 text-slate-600 border border-slate-300'
+                              }`}
+                            >
+                              {req.status === 'accepted' && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                              {req.status === 'declined' && <XCircle className="w-4 h-4 text-slate-500" />}
+                              <span>{req.status}</span>
+                            </span>
+                            {req.status === 'accepted' && (
+                              <p className="text-xs text-emerald-700 font-bold">
+                                {language === 'ta'
+                                  ? 'நன்றி! உங்கள் தொடர்பு விபரம் நோயாளிக்கு பகிரப்பட்டது'
+                                  : 'Thank you! Contact details shared with attendant.'}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

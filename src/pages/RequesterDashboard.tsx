@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { BloodRequest } from '../types';
+import { BloodRequest, DonorContactRequest } from '../types';
 
 interface RequesterDashboardProps {
   setCurrentTab: (tab: string) => void;
@@ -24,17 +24,26 @@ interface RequesterDashboardProps {
 
 export const RequesterDashboard: React.FC<RequesterDashboardProps> = ({ setCurrentTab }) => {
   const { user, logout } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [requests, setRequests] = useState<BloodRequest[]>([]);
+  const [contactRequests, setContactRequests] = useState<DonorContactRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchMyRequests = async () => {
     setLoading(true);
     try {
+      // 1. Live blood requests
       const res = await fetch('/api/requests');
       if (res.ok) {
         const data = await res.json();
         setRequests(data);
+      }
+
+      // 2. Direct contact requests sent to individual donors
+      const crRes = await fetch(`/api/donors/contact-requests?requesterId=${user?.id || ''}`);
+      if (crRes.ok) {
+        const crData = await crRes.json();
+        setContactRequests(crData.requests || []);
       }
     } catch (err) {
       console.error(err);
@@ -45,7 +54,9 @@ export const RequesterDashboard: React.FC<RequesterDashboardProps> = ({ setCurre
 
   useEffect(() => {
     fetchMyRequests();
-  }, []);
+    const interval = setInterval(fetchMyRequests, 5000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const handleCancelRequest = async (id: string) => {
     try {
@@ -247,6 +258,91 @@ export const RequesterDashboard: React.FC<RequesterDashboardProps> = ({ setCurre
                       Cancel
                     </button>
                   )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Direct Requests to Specific Donors (Find Donors) */}
+      <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-rose-100 space-y-6">
+        <div className="flex items-center justify-between border-b border-rose-100 pb-4">
+          <div>
+            <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#B80024]"></span>
+              <span>{language === 'ta' ? 'தானியாளர்களுக்கு அனுப்பிய நேரடிக் கோரிக்கைகள் (Find Donors)' : 'Direct Requests Sent to Donors (Find Donors)'}</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {language === 'ta'
+                ? 'Find Donors பக்கத்தில் இருந்து நீங்கள் நேரடியாக தானியாளர்களுக்கு அனுப்பிய கோரிக்கைகளின் நிலை.'
+                : 'Status of emergency requests you submitted to individual verified donors in the directory.'}
+            </p>
+          </div>
+          <button
+            onClick={() => setCurrentTab('find-donors')}
+            className="text-xs font-extrabold text-[#B80024] hover:underline"
+          >
+            {language === 'ta' ? 'தானியாளர்களைத் தேடு' : 'Find More Donors'}
+          </button>
+        </div>
+
+        {contactRequests.length === 0 ? (
+          <div className="py-8 text-center space-y-2">
+            <p className="text-xs text-slate-500">
+              {language === 'ta'
+                ? 'நீங்கள் இன்னும் எந்தவொரு தானியாளருக்கும் நேரடியாகக் கோரிக்கை அனுப்பவில்லை.'
+                : 'No direct requests sent to donors yet.'}
+            </p>
+            <button
+              onClick={() => setCurrentTab('find-donors')}
+              className="text-xs font-bold text-[#B80024] underline"
+            >
+              {language === 'ta' ? 'Find Donors சென்று தானியாளரைத் தொடர்பு கொள்ளுங்கள்' : 'Go to Find Donors to contact donors directly'}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {contactRequests.map((cr) => (
+              <div
+                key={cr.id}
+                className="p-5 rounded-2xl bg-rose-50/40 border border-rose-100 flex flex-col md:flex-row md:items-center justify-between gap-4"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase bg-[#B80024] text-white px-2 py-0.5 rounded-md">
+                      {cr.bloodGroup} • {cr.units} Units
+                    </span>
+                    <span className="text-xs font-extrabold text-slate-800">
+                      Donor: <strong className="text-slate-900">{cr.donorName || 'Verified Donor'}</strong>
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Patient: <strong>{cr.patientName}</strong> at <strong>{cr.hospitalName}</strong>
+                  </p>
+                  <p className="text-xs text-slate-500 italic">"{cr.message}"</p>
+                  {cr.status === 'accepted' && cr.donorPhone && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-emerald-100/70 border border-emerald-300 text-xs font-bold text-emerald-900 flex items-center gap-2">
+                      <span>🎉 Donor accepted! Direct contact number:</span>
+                      <a href={`tel:${cr.donorPhone}`} className="text-emerald-800 underline font-extrabold">
+                        {cr.donorPhone}
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 shrink-0">
+                  <span
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase ${
+                      cr.status === 'accepted'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        : cr.status === 'declined'
+                        ? 'bg-slate-200 text-slate-700 border border-slate-300'
+                        : 'bg-amber-100 text-amber-800 border border-amber-200'
+                    }`}
+                  >
+                    {cr.status === 'pending' ? 'Pending Donor Response' : cr.status}
+                  </span>
                 </div>
               </div>
             ))}

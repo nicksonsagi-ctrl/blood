@@ -1064,14 +1064,16 @@ app.post('/api/donors/contact-request', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Please fill all required patient and contact fields.' });
   }
 
-  const targetDonor = db.donorProfiles.find((dp) => dp.id === donorId);
+  const targetDonor = db.donorProfiles.find((dp) => dp.id === donorId || dp.userId === donorId);
   if (!targetDonor) {
     return res.status(404).json({ error: 'Donor profile not found' });
   }
 
   const newContactReq = {
     id: `CR-${Date.now().toString().slice(-6)}`,
-    donorId,
+    donorId: targetDonor.id,
+    donorUserId: targetDonor.userId,
+    donorName: targetDonor.fullName,
     requesterId: requesterId || 'anonymous-requester',
     requesterName,
     requesterPhone,
@@ -1085,24 +1087,61 @@ app.post('/api/donors/contact-request', (req: Request, res: Response) => {
     createdAt: new Date().toISOString(),
   };
 
-  db.contactRequests.push(newContactReq);
+  db.contactRequests.unshift(newContactReq);
 
   // Notify donor
-  db.notifications.unshift({
-    id: `NOTIF-${Date.now()}`,
-    userId: targetDonor.userId,
-    title: 'New Emergency Blood Contact Request',
-    message: `${requesterName} is requesting ${units || 1} units of ${bloodGroup || targetDonor.bloodGroup} at ${hospitalName}.`,
-    type: 'contact',
-    isRead: false,
-    linkUrl: '/donor-dashboard',
-    createdAt: new Date().toISOString(),
-  });
+  if (targetDonor.userId) {
+    db.notifications.unshift({
+      id: `NOTIF-${Date.now()}`,
+      userId: targetDonor.userId,
+      title: '🚨 New Emergency Blood Contact Request',
+      message: `${requesterName} is requesting ${units || 1} units of ${bloodGroup || targetDonor.bloodGroup} for patient ${patientName} at ${hospitalName}.`,
+      type: 'contact',
+      isRead: false,
+      linkUrl: '/donor-dashboard',
+      createdAt: new Date().toISOString(),
+    });
+  }
 
-  logAudit(requesterPhone, 'requester', 'CREATE_CONTACT_REQUEST', newContactReq.id, `Contact request created for donor ${targetDonor.fullName}`);
+  logAudit(requesterPhone, 'requester', 'CREATE_CONTACT_REQUEST', newContactReq.id, `Contact request created for donor ${targetDonor.fullName} (${targetDonor.bloodGroup})`);
   return res.status(201).json({
     message: 'Your request has been dispatched safely to the donor.',
     contactRequest: newContactReq,
+  });
+});
+
+// Fetch contact requests for donor or requester
+app.get('/api/donors/contact-requests', (req: Request, res: Response) => {
+  const { donorId, userId, requesterId } = req.query;
+  let requests = [...db.contactRequests];
+
+  if (donorId || userId) {
+    const donor = db.donorProfiles.find(
+      (dp) =>
+        (donorId && (dp.id === donorId || dp.userId === donorId)) ||
+        (userId && (dp.userId === userId || dp.id === userId))
+    );
+
+    const matchProfileId = donor ? donor.id : donorId;
+    const matchUserId = donor ? donor.userId : userId;
+
+    requests = requests.filter((cr) => {
+      if (donorId && (cr.donorId === donorId || cr.donorUserId === donorId)) return true;
+      if (userId && (cr.donorUserId === userId || cr.donorId === userId)) return true;
+      if (matchProfileId && (cr.donorId === matchProfileId || cr.donorUserId === matchProfileId)) return true;
+      if (matchUserId && (cr.donorUserId === matchUserId || cr.donorId === matchUserId)) return true;
+      return false;
+    });
+  } else if (requesterId) {
+    requests = requests.filter((cr) => cr.requesterId === requesterId);
+  }
+
+  // Sort newest first
+  requests.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  return res.json({
+    total: requests.length,
+    requests,
   });
 });
 
@@ -1119,17 +1158,27 @@ app.post('/api/donors/contact-requests/:id/respond', (req: Request, res: Respons
   contactReq.status = action === 'accept' ? 'accepted' : 'declined';
   contactReq.respondedAt = new Date().toISOString();
 
+  // If accepted, attach donor contact information for requester visibility
+  const targetDonor = db.donorProfiles.find((dp) => dp.id === contactReq.donorId || dp.userId === contactReq.donorUserId);
+  if (targetDonor && action === 'accept') {
+    contactReq.donorPhone = targetDonor.phone;
+    contactReq.donorEmail = targetDonor.email;
+    contactReq.donorName = targetDonor.fullName;
+  }
+
   // Notify requester
-  db.notifications.unshift({
-    id: `NOTIF-${Date.now()}`,
-    userId: contactReq.requesterId,
-    title: `Donor Response: ${action === 'accept' ? 'Accepted' : 'Declined'}`,
-    message: `A donor has ${action === 'accept' ? 'accepted' : 'declined'} your blood contact request ${contactReq.id}.`,
-    type: 'request',
-    isRead: false,
-    linkUrl: '/requester-dashboard',
-    createdAt: new Date().toISOString(),
-  });
+  if (contactReq.requesterId && contactReq.requesterId !== 'anonymous-requester') {
+    db.notifications.unshift({
+      id: `NOTIF-${Date.now()}`,
+      userId: contactReq.requesterId,
+      title: `Donor Response: ${action === 'accept' ? 'Accepted' : 'Declined'}`,
+      message: `${contactReq.donorName || 'A donor'} has ${action === 'accept' ? 'accepted' : 'declined'} your blood contact request for ${contactReq.patientName}.`,
+      type: 'request',
+      isRead: false,
+      linkUrl: '/requester-dashboard',
+      createdAt: new Date().toISOString(),
+    });
+  }
 
   return res.json({ message: `Request ${action}ed successfully`, contactReq });
 });

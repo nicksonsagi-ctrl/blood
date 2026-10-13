@@ -80,6 +80,10 @@ export interface DonorContactRequest {
   requesterName: string;
   requesterPhone: string;
   donorId: string;
+  donorUserId?: string;
+  donorName?: string;
+  donorPhone?: string;
+  donorEmail?: string;
   patientName: string;
   hospitalName: string;
   bloodGroup: BloodGroup;
