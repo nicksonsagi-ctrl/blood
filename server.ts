@@ -33,6 +33,7 @@ const db: DBState = {
       id: 'usr-admin-1',
       fullName: 'Dr. Ketheeswaran M.',
       email: 'admin@lifelink.lk',
+      password: 'Admin@1234',
       phone: '+94 21 222 2261',
       role: 'admin',
       province: 'Northern',
@@ -45,6 +46,7 @@ const db: DBState = {
       id: 'usr-donor-1',
       fullName: 'Divya K.',
       email: 'divya@lifelink.lk',
+      password: 'Donor@1234',
       phone: '+94 77 123 4567',
       role: 'donor',
       province: 'Northern',
@@ -129,6 +131,7 @@ const db: DBState = {
       id: 'usr-requester-1',
       fullName: 'Ravi S.',
       email: 'ravi@lifelink.lk',
+      password: 'Requester@1234',
       phone: '+94 71 889 9001',
       role: 'requester',
       province: 'Northern',
@@ -683,14 +686,19 @@ function logAudit(actorEmail: string, actorRole: string, action: string, targetR
 
 // 1. AUTHENTICATION
 app.post('/api/auth/login', (req: Request, res: Response) => {
-  const { email } = req.body;
+  const { email, password } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'Email address is required' });
   }
 
   const user = db.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
   if (!user) {
-    return res.status(404).json({ error: 'User account not found with this email' });
+    return res.status(404).json({ error: 'No account found with this email address.' });
+  }
+
+  // If password was provided and user has a password stored, verify it
+  if (password && user.password && user.password !== password) {
+    return res.status(401).json({ error: 'Incorrect password. Please verify your password and try again.' });
   }
 
   let profile = null;
@@ -711,6 +719,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     fullName,
     email,
     phone,
+    password = 'User@1234',
     role = 'donor',
     bloodGroup = 'O+',
     province = 'Northern',
@@ -738,6 +747,7 @@ app.post('/api/auth/register', (req: Request, res: Response) => {
     fullName,
     email,
     phone,
+    password,
     role,
     province,
     district,
@@ -1253,4 +1263,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (process.env.VERCEL !== '1') {
+  startServer();
+}
+
+export default app;

@@ -155,42 +155,6 @@ export const Navbar: React.FC<NavbarProps> = ({ currentTab, setCurrentTab, openA
               )}
             </div>
 
-            {/* Quick Role Switcher for Test Reviewers */}
-            <div className="hidden md:flex items-center bg-rose-100/70 p-0.5 rounded-lg border border-rose-200">
-              <button
-                onClick={() => switchRole('donor')}
-                className={`px-2 py-1 text-[11px] font-bold rounded-md transition ${
-                  role === 'donor'
-                    ? 'bg-[#B80024] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-[#B80024]'
-                }`}
-                title="Switch to Donor (Divya K.)"
-              >
-                Donor
-              </button>
-              <button
-                onClick={() => switchRole('requester')}
-                className={`px-2 py-1 text-[11px] font-bold rounded-md transition ${
-                  role === 'requester'
-                    ? 'bg-[#B80024] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-[#B80024]'
-                }`}
-                title="Switch to Requester (Ravi S.)"
-              >
-                Requester
-              </button>
-              <button
-                onClick={() => switchRole('admin')}
-                className={`px-2 py-1 text-[11px] font-bold rounded-md transition ${
-                  role === 'admin'
-                    ? 'bg-[#B80024] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-[#B80024]'
-                }`}
-                title="Switch to Admin (Dr. Ketheeswaran)"
-              >
-                Admin
-              </button>
-            </div>
 
             {/* Notifications Button */}
             {user && (

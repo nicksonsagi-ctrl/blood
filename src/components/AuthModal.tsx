@@ -18,12 +18,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
 
   // Register form state
   const [registerData, setRegisterData] = useState({
     fullName: '',
     email: '',
     phone: '',
+    password: '',
+    confirmPassword: '',
     bloodGroup: 'O+' as BloodGroup,
     province: 'Northern',
     district: 'Jaffna',
@@ -36,12 +39,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
     e.preventDefault();
     setError('');
     setLoading(true);
-    const success = await login(loginEmail);
+    const result = await login(loginEmail, loginPassword);
     setLoading(false);
-    if (success) {
+    if (result.success) {
       onClose();
     } else {
-      setError('No account found with this email. Try quick test accounts below.');
+      setError(result.error || 'Invalid email or password.');
     }
   };
 
@@ -50,7 +53,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
     setError('');
 
     if (!registerData.fullName || !registerData.email || !registerData.phone) {
-      setError('Please fill all mandatory fields.');
+      setError('Please fill all mandatory personal and contact fields.');
+      return;
+    }
+
+    if (!registerData.password) {
+      setError('Please create a password for your account.');
+      return;
+    }
+
+    if (registerData.password.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (registerData.password !== registerData.confirmPassword) {
+      setError('Passwords do not match. Please re-enter identical passwords.');
       return;
     }
 
@@ -60,21 +78,23 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
     }
 
     setLoading(true);
-    const success = await register({
+    const result = await register({
       ...registerData,
       role,
     });
     setLoading(false);
-    if (success) {
+    if (result.success) {
       onClose();
     } else {
-      setError('Registration failed. This email may already be in use.');
+      setError(result.error || 'Registration failed. This email may already be in use.');
     }
   };
 
-  const handleQuickLogin = async (email: string) => {
+  const handleQuickLogin = async (email: string, pass: string) => {
+    setLoginEmail(email);
+    setLoginPassword(pass);
     setLoading(true);
-    await login(email);
+    await login(email, pass);
     setLoading(false);
     onClose();
   };
@@ -146,6 +166,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
           )}
 
           {mode === 'login' ? (
+            <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Email Address
@@ -155,7 +176,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
                   required
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
-                  placeholder="admin@lifelink.lk"
+                  placeholder="e.g. admin@lifelink.lk"
                   className="w-full px-3.5 py-2.5 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
                 />
               </div>
@@ -192,7 +213,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
                 <div className="space-y-1.5">
                   <button
                     type="button"
-                    onClick={() => handleQuickLogin('divya@lifelink.lk')}
+                    onClick={() => handleQuickLogin('divya@lifelink.lk', 'Donor@1234')}
                     className="w-full text-left px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-medium text-slate-800 flex items-center justify-between transition"
                   >
                     <span>
@@ -205,7 +226,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
 
                   <button
                     type="button"
-                    onClick={() => handleQuickLogin('ravi@lifelink.lk')}
+                    onClick={() => handleQuickLogin('ravi@lifelink.lk', 'Requester@1234')}
                     className="w-full text-left px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-xs font-medium text-slate-800 flex items-center justify-between transition"
                   >
                     <span>
@@ -218,7 +239,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
 
                   <button
                     type="button"
-                    onClick={() => handleQuickLogin('admin@lifelink.lk')}
+                    onClick={() => handleQuickLogin('admin@lifelink.lk', 'Admin@1234')}
                     className="w-full text-left px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-300 text-xs font-medium text-slate-800 flex items-center justify-between transition"
                   >
                     <span>
@@ -302,6 +323,37 @@ export const AuthModal: React.FC<AuthModalProps> = ({ initialMode, onClose }) =>
                     value={registerData.phone}
                     onChange={(e) => setRegisterData({ ...registerData, phone: e.target.value })}
                     placeholder="+94 77 123 4567"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Create Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={registerData.password}
+                    onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
+                    placeholder="Min 6 characters"
+                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Confirm Password *
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={registerData.confirmPassword}
+                    onChange={(e) => setRegisterData({ ...registerData, confirmPassword: e.target.value })}
+                    placeholder="Re-enter password"
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl focus:border-[#B80024] focus:outline-none"
                   />
                 </div>

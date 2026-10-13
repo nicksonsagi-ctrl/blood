@@ -6,8 +6,8 @@ interface AuthContextType {
   donorProfile: DonorProfile | null;
   role: UserRole | 'guest';
   isAuthenticated: boolean;
-  login: (email: string) => Promise<boolean>;
-  register: (data: any) => Promise<boolean>;
+  login: (email: string, password?: string) => Promise<{ success: boolean; error?: string }>;
+  register: (data: any) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   switchRole: (role: UserRole) => void;
   updateDonorProfile: (data: Partial<DonorProfile>) => Promise<void>;
@@ -25,42 +25,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Default to Divya K. (Donor) initially so reviewers immediately see the interactive donor features matching the uploaded screenshot!
   useEffect(() => {
-    login('divya@lifelink.lk');
+    login('divya@lifelink.lk', 'Donor@1234');
   }, []);
 
-  const login = async (email: string): Promise<boolean> => {
+  const login = async (email: string, password?: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) return false;
       const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Login failed' };
+      }
       setUser(data.user);
       setDonorProfile(data.profile);
       fetchNotifications(data.user.id);
-      return true;
+      return { success: true };
     } catch {
-      return false;
+      return { success: false, error: 'Network error. Please try again.' };
     }
   };
 
-  const register = async (formData: any): Promise<boolean> => {
+  const register = async (formData: any): Promise<{ success: boolean; error?: string }> => {
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      if (!res.ok) return false;
       const data = await res.json();
+      if (!res.ok) {
+        return { success: false, error: data.error || 'Registration failed' };
+      }
       setUser(data.user);
       setDonorProfile(data.profile);
       fetchNotifications(data.user.id);
-      return true;
+      return { success: true };
     } catch {
-      return false;
+      return { success: false, error: 'Network error. Please try again.' };
     }
   };
 
